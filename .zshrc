@@ -11,6 +11,8 @@ zplug "mollifier/anyframe"
 zplug "mollifier/cd-gitroot"
 zplug "zsh-users/zsh-completions"
 
+zplug "zsh-users/zsh-autosuggestions"
+
 zplug "plugins/git", from:oh-my-zsh
 # zplug "themes/gnzh", from:oh-my-zsh, nice:11
 
@@ -27,17 +29,17 @@ fi
 zplug load --verbose
 # zplug end
 
+ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=60'
+
 export LANG=ja_JP.UTF-8
 
-export HOMEBREW_CASK_OPTS="--appdir=/Applications"
-
-if [ -d ~/android-sdk ]; then
-  export ANDROID_SDK_ROOT=~/android-sdk
-elif [ -d ~/android-sdks ]; then
-  export ANDROID_SDK_ROOT=~/android-sdks
-elif [ -d ~/work/android-sdk-mac_x86 ]; then
-  export ANDROID_SDK_ROOT=~/work/android-sdk-mac_x86
+export PYENV_ROOT=${HOME}/.pyenv
+if [ -d "${PYENV_ROOT}" ]; then
+    export PATH=${PYENV_ROOT}/bin:$PATH
+    eval "$(pyenv init -)"
 fi
+
+export HOMEBREW_CASK_OPTS="--appdir=/Applications"
 
 if [ -f "$(which dvm)" ]; then
   eval "$(dvm env)"
@@ -45,55 +47,40 @@ fi
 
 export JAVA_HOME=$(/usr/libexec/java_home -v 1.8)
 export JAVA8_HOME=$(/usr/libexec/java_home -v 1.8)
-
-export ANDROID_SDK_HOME=$ANDROID_SDK_ROOT
-export ANDROID_HOME=$ANDROID_SDK_HOME
-export ANDROID_NDK_ROOT=~/android-ndk-r9b
-export ANDROID_AVD_HOME=$ANDROID_SDK_HOME/.android/avd 
-
-export SCALA_HOME=/opt/local/share/scala
-export PLAY_HOME=~/work/play-2.0.4
-
-export DART_SDK=/Applications/dart/dart-sdk
-
-# https://bitbucket.org/ymotongpoo/goenv
-export GOPATH=~/Dropbox/work/go-work
-export GOROOT=$(brew --prefix go)/libexec
-export PATH=$PATH:$GOPATH/bin
-export APPENGINE_DEV_APPSERVER=~/go_appengine/dev_appserver.py
-export PATH=$PATH:~/go_appengine
-
-export NACL_SDK_ROOT=~/nacl_sdk/pepper_31
-
-if [ -s /opt/local/bin/phantomjs ]; then
-  export PHANTOMJS_BIN=/opt/local/bin/phantomjs
-elif [ -s /usr/local/bin/phantomjs ]; then
-  export PHANTOMJS_BIN=/usr/local/bin/phantomjs
-fi
-
-# boot2docker up するたびに変わるのでこの対応はあまりよくないかも
-# $(boot2docker shellinit)
-
-# setup gvm (Groovy)
-if [ -s ~/.gvm/bin/gvm-init.sh ]; then
-  source ~/.gvm/bin/gvm-init.sh
-fi
+export _JAVA_OPTIONS="-Dfile.encoding=UTF-8"
 export GRADLE_OPTS="-Dorg.gradle.daemon=true"
+export PATH=$PATH:$JAVA_HOME/bin
+export PATH=$PATH:$JAVA8_HOME/bin
 
-if [ -s ~/google-cloud-sdk/completion.zsh.inc ]; then
-  source ~/google-cloud-sdk/completion.zsh.inc
-fi
+# go のpath設定
+export GOPATH=$HOME/go
+export PATH=$PATH:/usr/local/go/bin
+
+export GO15VENDOREXPERIMENT=1
+export PATH=$PATH:$GOPATH/bin
+
+export GO111MODULE=on
+
+# terraform
+export PATH=$PATH:~/terraform/
+
+# php の path設定
+export PATH=~/.phpenv/bin:$PATH
+eval "$(phpenv init -)"
 
 ## Path settings
 export PATH=/opt/local/bin:/opt/local/sbin:/usr/local/bin:$PATH
 # nvm より優先する
 export PATH=~/.nodebrew/current/bin:$PATH
-export PATH=$PATH:$JAVA_HOME/bin
-export PATH=$PATH:$JAVA8_HOME/bin
-# android
-export PATH=$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools:$ANDROID_NDK_ROOT
+
 # google
 export PATH=$PATH:~/google-cloud-sdk/bin
+if [ -s ~/google-cloud-sdk/completion.zsh.inc ]; then
+  source ~/google-cloud-sdk/completion.zsh.inc
+fi
+
+export PATH=$HOME/google-cloud-sdk/platform/google_appengine:$PATH
+
 # misc
 export PATH=~/.cabal/bin:$PATH
 export PATH=$PATH:$(brew --prefix git)/share/git-core/contrib/diff-highlight
@@ -112,7 +99,9 @@ else
 fi
 export LESS='-R'
 
-export _JAVA_OPTIONS="-Dfile.encoding=UTF-8"
+
+export LDFLAGS="-L/usr/local/opt/readline/lib"
+export CPPFLAGS="-I/usr/local/opt/readline/include"
 
 HISTFILE=~/.zsh_history
 HISTSIZE=10000
@@ -142,13 +131,95 @@ bindkey '^R' peco-history-selection
 autoload colors
 colors
 
-# alias emacs="/Applications/Emacs.app/Contents/MacOS/Emacs"
+# alias 
 alias ls="ls -G"
 alias la="ls -laGF"
-alias emacs="open -a Emacs"
-alias pwdweb="python -m SimpleHTTPServer 8989"
 alias java7="export JAVA_HOME=`/usr/libexec/java_home -v 1.7`"
+alias java8="export JAVA_HOME=`/usr/libexec/java_home -v 1.8`"
+alias gb="gb"
+alias python="python3"
+
+autoload -Uz add-zsh-hook
+
+export EDITOR=vim
+eval "$(direnv hook zsh)"
+
+bindkey -e
+
+###-begin-npm-completion-###
+#
+# npm command completion script
+#
+# Installation: npm completion >> ~/.bashrc  (or ~/.zshrc)
+# Or, maybe: npm completion > /usr/local/etc/bash_completion.d/npm
+#
+
+if type complete &>/dev/null; then
+  _npm_completion () {
+    local words cword
+    if type _get_comp_words_by_ref &>/dev/null; then
+      _get_comp_words_by_ref -n = -n @ -w words -i cword
+    else
+      cword="$COMP_CWORD"
+      words=("${COMP_WORDS[@]}")
+    fi
+
+    local si="$IFS"
+    IFS=$'\n' COMPREPLY=($(COMP_CWORD="$cword" \
+                           COMP_LINE="$COMP_LINE" \
+                           COMP_POINT="$COMP_POINT" \
+                           npm completion -- "${words[@]}" \
+                           2>/dev/null)) || return $?
+    IFS="$si"
+  }
+  complete -o default -F _npm_completion npm
+elif type compdef &>/dev/null; then
+  _npm_completion() {
+    local si=$IFS
+    compadd -- $(COMP_CWORD=$((CURRENT-1)) \
+                 COMP_LINE=$BUFFER \
+                 COMP_POINT=0 \
+                 npm completion -- "${words[@]}" \
+                 2>/dev/null)
+    IFS=$si
+  }
+  compdef _npm_completion npm
+elif type compctl &>/dev/null; then
+  _npm_completion () {
+    local cword line point words si
+    read -Ac words
+    read -cn cword
+    let cword-=1
+    read -l line
+    read -ln point
+    si="$IFS"
+    IFS=$'\n' reply=($(COMP_CWORD="$cword" \
+                       COMP_LINE="$line" \
+                       COMP_POINT="$point" \
+                       npm completion -- "${words[@]}" \
+                       2>/dev/null)) || return $?
+    IFS="$si"
+  }
+  compctl -K _npm_completion npm
+fi
+###-end-npm-completion-###
 
 #THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
 export SDKMAN_DIR="/Users/satoutakashi/.sdkman"
 [[ -s "/Users/satoutakashi/.sdkman/bin/sdkman-init.sh" ]] && source "/Users/satoutakashi/.sdkman/bin/sdkman-init.sh"
+setopt nonomatch
+
+function disable_git_push_origin_master() {
+    if [[ $2 = "git push origin master" ]]; then 
+            exit
+    fi
+}
+export PATH="/usr/local/opt/bison@2.7/bin:$PATH"
+
+# The next line updates PATH for the Google Cloud SDK.
+if [ -f '/Users/satoutakashi/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/satoutakashi/google-cloud-sdk/path.zsh.inc'; fi
+
+# The next line enables shell command completion for gcloud.
+if [ -f '/Users/satoutakashi/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/satoutakashi/google-cloud-sdk/completion.zsh.inc'; fi
+export PATH="/usr/local/opt/ruby/bin:$PATH"
+export PATH="/usr/local/opt/sqlite/bin:$PATH"
